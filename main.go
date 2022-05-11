@@ -8,19 +8,52 @@ import (
 	"gorm.io/gorm"
 )
 
+type ChatRoom struct {
+	name  string
+	users []*ChatUser
+}
+
+func (room *ChatRoom) Add(user *ChatUser) {
+	room.users = append(room.users, user)
+}
+
+func (room *ChatRoom) Remove(user *ChatUser) {
+	for i, u := range room.users {
+		if u == user {
+			room.users = append(room.users[:i], room.users[i+1:]...)
+		}
+	}
+}
+
+func (room *ChatRoom) Send(msg string) {
+	for _, user := range room.users {
+		user.Send(msg)
+	}
+}
+
+type ChatUser = WebSocket
+
 func chatHandler(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
-		defer ws.Close()
-		for {
-			msg := ""
-			err := websocket.Message.Receive(ws, &msg)
+		defer func() {
+			err := ws.Close()
 			if err != nil {
-				c.Logger().Error(err)
+				c.Logger().Debug(err)
 			}
-			if len(msg) > 0 {
-				err = websocket.Message.Send(ws, msg)
-				if err != nil {
-					c.Logger().Error(err)
+		}()
+
+		user := NewWebSocket(c, ws)
+		room := chatServer.GetChatRoom("test")
+		room.Add(user)
+		defer room.Remove(user)
+
+		for {
+			select {
+			case msg, ok := <-user.Received:
+				if ok {
+					room.Send(msg)
+				} else {
+					return
 				}
 			}
 		}
@@ -47,6 +80,12 @@ func StaticFileHook() (string, string) {
 
 func WorkerPoolHook() func(worker.Pool) error {
 	return func(wp worker.Pool) error {
+		go chatServer.HandleRequests()
 		return nil
 	}
 }
+
+var _ = MigrationHook
+var _ = RouterHook
+var _ = StaticFileHook
+var _ = WorkerPoolHook
