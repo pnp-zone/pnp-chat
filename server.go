@@ -3,20 +3,20 @@ package main
 // Global instance
 var chatServer = ChatServer{
 	make(map[string]*ChatRoom),
-	make(chan syncCall),
+	make(chan syncServerCall),
 }
 
 type ChatServer struct {
 	rooms map[string]*ChatRoom
-	calls chan syncCall
+	calls chan syncServerCall
 }
 
 // A call to a server's method which requires synchronization
-type syncCall interface {
+type syncServerCall interface {
 	execute(*ChatServer)
 }
 
-func (server *ChatServer) HandleRequests() {
+func (server *ChatServer) HandleCalls() {
 	for {
 		call := <-server.calls
 		call.execute(server)
@@ -40,10 +40,8 @@ type getRoom struct {
 func (call getRoom) execute(server *ChatServer) {
 	room, ok := server.rooms[call.name]
 	if !ok {
-		room = &ChatRoom{
-			call.name,
-			make([]*ChatUser, 0),
-		}
+		room = NewChatRoom(call.name)
+		go room.HandleCalls()
 		server.rooms[call.name] = room
 	}
 	call.response <- room
@@ -62,6 +60,7 @@ type deleteRoom struct {
 func (call deleteRoom) execute(server *ChatServer) {
 	room, ok := server.rooms[call.name]
 	if ok && len(room.users) == 0 {
+		room.Stop()
 		delete(server.rooms, call.name)
 	}
 }

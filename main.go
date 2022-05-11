@@ -8,29 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type ChatRoom struct {
-	name  string
-	users []*ChatUser
-}
-
-func (room *ChatRoom) Add(user *ChatUser) {
-	room.users = append(room.users, user)
-}
-
-func (room *ChatRoom) Remove(user *ChatUser) {
-	for i, u := range room.users {
-		if u == user {
-			room.users = append(room.users[:i], room.users[i+1:]...)
-		}
-	}
-}
-
-func (room *ChatRoom) Send(msg string) {
-	for _, user := range room.users {
-		user.Send(msg)
-	}
-}
-
 type ChatUser = WebSocket
 
 func chatHandler(c echo.Context) error {
@@ -80,7 +57,7 @@ func StaticFileHook() (string, string) {
 
 func WorkerPoolHook() func(worker.Pool) error {
 	return func(wp worker.Pool) error {
-		go chatServer.HandleRequests()
+		go chatServer.HandleCalls()
 		return nil
 	}
 }
