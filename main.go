@@ -6,9 +6,10 @@ import (
 	"github.com/pnp-zone/common/conf"
 	"golang.org/x/net/websocket"
 	"gorm.io/gorm"
+	"pnp-chat/broadcast"
 )
 
-type ChatUser = WebSocket
+var broadcastServer = broadcast.NewServer()
 
 func chatHandler(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
@@ -19,19 +20,23 @@ func chatHandler(c echo.Context) error {
 			}
 		}()
 
-		user := NewWebSocket(c, ws)
-		room := chatServer.GetChatRoom("test")
-		room.Add(user)
-		defer room.Remove(user)
+		socket := NewWebSocket(c, ws)
+		room := make(chan interface{}, 8)
+
+		group := broadcastServer.GetGroup("test")
+		group.Subscribe(room)
+		defer group.Unsubscribe(room)
 
 		for {
 			select {
-			case msg, ok := <-user.Received:
+			case msg, ok := <-socket.Received:
 				if ok {
-					room.Send(msg)
+					group.Publish(msg)
 				} else {
 					return
 				}
+			case msg := <-room:
+				socket.Send(msg.(string))
 			}
 		}
 	}).ServeHTTP(c.Response(), c.Request())
@@ -57,7 +62,7 @@ func StaticFileHook() (string, string) {
 
 func WorkerPoolHook() func(worker.Pool) error {
 	return func(wp worker.Pool) error {
-		go chatServer.HandleCalls()
+		go broadcastServer.Start()
 		return nil
 	}
 }
